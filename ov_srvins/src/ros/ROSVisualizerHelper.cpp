@@ -102,11 +102,12 @@ tf::StampedTransform ROSVisualizerHelper::get_stamped_transform_from_pose(
 #if ROS_AVAILABLE == 2
 sensor_msgs::msg::PointCloud2
 ROSVisualizerHelper::get_ros_pointcloud(std::shared_ptr<rclcpp::Node> node,
-                                        const std::vector<Vec3> &feats) {
+                                        const std::vector<Vec3> &feats,
+                                        const std::string node_namespace) {
 
   // Declare message and sizes
   sensor_msgs::msg::PointCloud2 cloud;
-  cloud.header.frame_id = "global";
+  cloud.header.frame_id = node_namespace + "/srv_global";
   cloud.header.stamp = node->now();
   cloud.width = 3 * feats.size();
   cloud.height = 1;

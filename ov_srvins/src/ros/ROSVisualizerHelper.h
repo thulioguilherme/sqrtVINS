@@ -96,7 +96,8 @@ public:
    */
   static sensor_msgs::msg::PointCloud2
   get_ros_pointcloud(std::shared_ptr<rclcpp::Node> node,
-                     const std::vector<Vec3> &feats);
+                     const std::vector<Vec3> &feats,
+                     const std::string node_namespace);
 
   /**
    * @brief Given a ov_type::PoseJPL this will convert into the ros format.

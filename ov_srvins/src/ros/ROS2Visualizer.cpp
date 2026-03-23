@@ -12,20 +12,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3.0 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this program. If not, see
  * <https://www.gnu.org/licenses/>.
  */
-
-
-
-
 
 #include "ROS2Visualizer.h"
 
@@ -54,45 +50,47 @@ ROS2Visualizer::ROS2Visualizer(std::shared_ptr<rclcpp::Node> node,
   // Create image transport
   image_transport::ImageTransport it(node);
 
+  // get node namespace
+  node->get_parameter<std::string>("namespace", _node_namespace_);
+
   // Setup pose and path publisher
   pub_poseimu =
-      node->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
-          "poseimu", 2);
+      node->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("~/poseimu", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_poseimu->get_topic_name());
-  pub_odomimu = node->create_publisher<nav_msgs::msg::Odometry>("odomimu", 2);
+  pub_odomimu = node->create_publisher<nav_msgs::msg::Odometry>("~/odomimu", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_odomimu->get_topic_name());
-  pub_pathimu = node->create_publisher<nav_msgs::msg::Path>("pathimu", 2);
+  pub_pathimu = node->create_publisher<nav_msgs::msg::Path>("~/pathimu", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_pathimu->get_topic_name());
 
   // 3D points publishing
   pub_points_msckf =
-      node->create_publisher<sensor_msgs::msg::PointCloud2>("points_msckf", 2);
+      node->create_publisher<sensor_msgs::msg::PointCloud2>("~/points_msckf", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_points_msckf->get_topic_name());
   pub_points_slam =
-      node->create_publisher<sensor_msgs::msg::PointCloud2>("points_slam", 2);
+      node->create_publisher<sensor_msgs::msg::PointCloud2>("~/points_slam", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_points_msckf->get_topic_name());
   pub_points_aruco =
-      node->create_publisher<sensor_msgs::msg::PointCloud2>("points_aruco", 2);
+      node->create_publisher<sensor_msgs::msg::PointCloud2>("~/points_aruco", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_points_aruco->get_topic_name());
   pub_points_sim =
-      node->create_publisher<sensor_msgs::msg::PointCloud2>("points_sim", 2);
+      node->create_publisher<sensor_msgs::msg::PointCloud2>("~/points_sim", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_points_sim->get_topic_name());
 
   // Our tracking image
-  it_pub_tracks = it.advertise("trackhist", 2);
+  it_pub_tracks = it.advertise("~/trackhist", 2);
   PRINT_DEBUG("Publishing: %s\n", it_pub_tracks.getTopic().c_str());
 
   // Groundtruth publishers
   pub_posegt =
-      node->create_publisher<geometry_msgs::msg::PoseStamped>("posegt", 2);
+      node->create_publisher<geometry_msgs::msg::PoseStamped>("~/posegt", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_posegt->get_topic_name());
-  pub_pathgt = node->create_publisher<nav_msgs::msg::Path>("pathgt", 2);
+  pub_pathgt = node->create_publisher<nav_msgs::msg::Path>("~/pathgt", 2);
   PRINT_DEBUG("Publishing: %s\n", pub_pathgt->get_topic_name());
 
-  // option to enable publishing of global to IMU transformation
-  if (node->has_parameter("publish_global_to_imu_tf")) {
-    node->get_parameter<bool>("publish_global_to_imu_tf",
-                              publish_global2imu_tf);
+  // option to enable publishing of IMU to global transformation
+  if (node->has_parameter("publish_imu_to_global_tf")) {
+    node->get_parameter<bool>("publish_imu_to_global_tf",
+                              publish_imu2global_tf);
   }
   if (node->has_parameter("publish_calibration_tf")) {
     node->get_parameter<bool>("publish_calibration_tf", publish_calibration_tf);
@@ -184,9 +182,9 @@ void ROS2Visualizer::setup_subscribers(
 
   // Create imu subscriber (handle legacy ros param info)
   std::string topic_imu;
-  _node->declare_parameter<std::string>("topic_imu", "/imu0");
+  // _node->declare_parameter<std::string>("topic_imu", "/imu0");
   _node->get_parameter("topic_imu", topic_imu);
-  parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
+  // parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
   sub_imu = _node->create_subscription<sensor_msgs::msg::Imu>(
       topic_imu, rclcpp::SensorDataQoS(),
       std::bind(&ROS2Visualizer::callback_inertial, this,
@@ -198,18 +196,18 @@ void ROS2Visualizer::setup_subscribers(
   if (_app->get_params().state_options.num_cameras == 2) {
     // Read in the topics
     std::string cam_topic0, cam_topic1;
-    _node->declare_parameter<std::string>("topic_camera" + std::to_string(0),
-                                          "/cam" + std::to_string(0) +
-                                              "/image_raw");
+    /* _node->declare_parameter<std::string>("topic_camera" + std::to_string(0), */
+    /*                                       "/cam" + std::to_string(0) + */
+    /*                                           "/image_raw"); */
     _node->get_parameter("topic_camera" + std::to_string(0), cam_topic0);
-    _node->declare_parameter<std::string>("topic_camera" + std::to_string(1),
-                                          "/cam" + std::to_string(1) +
-                                              "/image_raw");
-    _node->get_parameter("topic_camera" + std::to_string(1), cam_topic0);
-    parser->parse_external("relative_config_imucam", "cam" + std::to_string(0),
-                           "rostopic", cam_topic0);
-    parser->parse_external("relative_config_imucam", "cam" + std::to_string(1),
-                           "rostopic", cam_topic1);
+    /* _node->declare_parameter<std::string>("topic_camera" + std::to_string(1), */
+    /*                                       "/cam" + std::to_string(1) + */
+    /*                                           "/image_raw"); */
+    _node->get_parameter("topic_camera" + std::to_string(1), cam_topic1);
+    /* parser->parse_external("relative_config_imucam", "cam" + std::to_string(0), */
+    /*                        "rostopic", cam_topic0); */
+    /* parser->parse_external("relative_config_imucam", "cam" + std::to_string(1), */
+    /*                        "rostopic", cam_topic1); */
     // Create sync filter (they have unique pointers internally, so we have to
     // use move logic here...)
     auto image_sub0 =
@@ -231,19 +229,19 @@ void ROS2Visualizer::setup_subscribers(
     sync_cam.push_back(sync);
     sync_subs_cam.push_back(image_sub0);
     sync_subs_cam.push_back(image_sub1);
-    PRINT_INFO("subscribing to cam (stereo): %s\n", cam_topic0.c_str());
-    PRINT_INFO("subscribing to cam (stereo): %s\n", cam_topic1.c_str());
+    PRINT_INFO("subscribing to cam0 (stereo): %s\n", cam_topic0.c_str());
+    PRINT_INFO("subscribing to cam1 (stereo): %s\n", cam_topic1.c_str());
   } else {
     // Now we should add any non-stereo callbacks here
     for (int i = 0; i < _app->get_params().state_options.num_cameras; i++) {
       // read in the topic
       std::string cam_topic;
-      _node->declare_parameter<std::string>("topic_camera" + std::to_string(i),
-                                            "/cam" + std::to_string(i) +
-                                                "/image_raw");
+      /* _node->declare_parameter<std::string>("topic_camera" + std::to_string(i), */
+      /*                                       "/cam" + std::to_string(i) + */
+      /*                                           "/image_raw"); */
       _node->get_parameter("topic_camera" + std::to_string(i), cam_topic);
-      parser->parse_external("relative_config_imucam",
-                             "cam" + std::to_string(i), "rostopic", cam_topic);
+      /* parser->parse_external("relative_config_imucam", */
+      /*                        "cam" + std::to_string(i), "rostopic", cam_topic); */
       // create subscriber
       // auto sub = _node->create_subscription<sensor_msgs::msg::Image>(
       //    cam_topic, rclcpp::SensorDataQoS(),
@@ -331,7 +329,7 @@ void ROS2Visualizer::visualize_odometry(double timestamp) {
     nav_msgs::msg::Odometry odomIinM;
     odomIinM.header.stamp =
         ROSVisualizerHelper::get_time_from_seconds(timestamp);
-    odomIinM.header.frame_id = "global";
+    odomIinM.header.frame_id = _node_namespace_ + "/srv_global";
 
     // The POSE component (orientation and position)
     odomIinM.pose.pose.orientation.x = state_plus(0);
@@ -343,7 +341,7 @@ void ROS2Visualizer::visualize_odometry(double timestamp) {
     odomIinM.pose.pose.position.z = state_plus(6);
 
     // The TWIST component (angular and linear velocities)
-    odomIinM.child_frame_id = "imu";
+    odomIinM.child_frame_id = _node_namespace_ + "/srv_imu";
     odomIinM.twist.twist.linear.x = state_plus(7); // vel in local frame
     odomIinM.twist.twist.linear.y = state_plus(8); // vel in local frame
     odomIinM.twist.twist.linear.z = state_plus(9); // vel in local frame
@@ -384,11 +382,18 @@ void ROS2Visualizer::visualize_odometry(double timestamp) {
   geometry_msgs::msg::TransformStamped trans =
       ROSVisualizerHelper::get_stamped_transform_from_pose(_node, odom_pose,
                                                            false);
-  trans.header.stamp = _node->now();
-  trans.header.frame_id = "global";
-  trans.child_frame_id = "imu";
-  if (publish_global2imu_tf) {
-    mTfBr->sendTransform(trans);
+  // Invert the transformation from GLOBAL to IMU
+  tf2::Transform tf2_transform;
+  tf2::fromMsg(trans.transform, tf2_transform);
+  tf2_transform = tf2_transform.inverse();
+
+  geometry_msgs::msg::TransformStamped geo_transform;
+  geo_transform.transform = tf2::toMsg(tf2_transform);
+  geo_transform.header.stamp = _node->now();
+  geo_transform.header.frame_id = _node_namespace_ + "/srv_imu";
+  geo_transform.child_frame_id = _node_namespace_ + "/srv_global";
+  if (publish_imu2global_tf) {
+    mTfBr->sendTransform(geo_transform);
   }
 
   // Loop through each camera calibration and publish it
@@ -397,8 +402,8 @@ void ROS2Visualizer::visualize_odometry(double timestamp) {
         ROSVisualizerHelper::get_stamped_transform_from_pose(
             _node, calib.second, true);
     trans_calib.header.stamp = _node->now();
-    trans_calib.header.frame_id = "imu";
-    trans_calib.child_frame_id = "cam" + std::to_string(calib.first);
+    trans_calib.header.frame_id = _node_namespace_ + "/srv_imu";
+    trans_calib.child_frame_id = _node_namespace_ + "/srv_cam" + std::to_string(calib.first);
     if (publish_calibration_tf) {
       mTfBr->sendTransform(trans_calib);
     }
@@ -661,7 +666,7 @@ void ROS2Visualizer::publish_state() {
   geometry_msgs::msg::PoseWithCovarianceStamped poseIinM;
   poseIinM.header.stamp =
       ROSVisualizerHelper::get_time_from_seconds(timestamp_inI);
-  poseIinM.header.frame_id = "global";
+  poseIinM.header.frame_id = _node_namespace_ + "/srv_global";
   poseIinM.pose.pose.orientation.x = state->imu->quat()(0);
   poseIinM.pose.pose.orientation.y = state->imu->quat()(1);
   poseIinM.pose.pose.orientation.z = state->imu->quat()(2);
@@ -698,7 +703,7 @@ void ROS2Visualizer::publish_state() {
   // NOTE: https://github.com/ros-visualization/rviz/issues/1107
   nav_msgs::msg::Path arrIMU;
   arrIMU.header.stamp = _node->now();
-  arrIMU.header.frame_id = "global";
+  arrIMU.header.frame_id = _node_namespace_ + "/srv_global";
   for (size_t i = 0; i < poses_imu.size();
        i += std::floor((float)poses_imu.size() / 16384.0) + 1) {
     arrIMU.poses.push_back(poses_imu.at(i));
@@ -728,7 +733,7 @@ void ROS2Visualizer::publish_images() {
   // Create our message
   std_msgs::msg::Header header;
   header.stamp = _node->now();
-  header.frame_id = "cam0";
+  header.frame_id = _node_namespace_ + "/srv_cam0";
   sensor_msgs::msg::Image::SharedPtr exl_msg =
       cv_bridge::CvImage(header, "bgr8", img_history).toImageMsg();
 
@@ -748,19 +753,19 @@ void ROS2Visualizer::publish_features() {
   // Get our good MSCKF features
   std::vector<Vec3> feats_msckf = _app->get_good_features_MSCKF();
   sensor_msgs::msg::PointCloud2 cloud =
-      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_msckf);
+      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_msckf, _node_namespace_);
   pub_points_msckf->publish(cloud);
 
   // Get our good SLAM features
   std::vector<Vec3> feats_slam = _app->get_features_SLAM();
   sensor_msgs::msg::PointCloud2 cloud_SLAM =
-      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_slam);
+      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_slam, _node_namespace_);
   pub_points_slam->publish(cloud_SLAM);
 
   // Get our good ARUCO features
   std::vector<Vec3> feats_aruco = _app->get_features_ARUCO();
   sensor_msgs::msg::PointCloud2 cloud_ARUCO =
-      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_aruco);
+      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_aruco, _node_namespace_);
   pub_points_aruco->publish(cloud_ARUCO);
 
   // Skip the rest of we are not doing simulation
@@ -770,7 +775,7 @@ void ROS2Visualizer::publish_features() {
   // Get our good SIMULATION features
   std::vector<Vec3> feats_sim = _sim->get_map_vec();
   sensor_msgs::msg::PointCloud2 cloud_SIM =
-      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_sim);
+      ROSVisualizerHelper::get_ros_pointcloud(_node, feats_sim, _node_namespace_);
   pub_points_sim->publish(cloud_SIM);
 }
 
@@ -808,7 +813,7 @@ void ROS2Visualizer::publish_groundtruth() {
   geometry_msgs::msg::PoseStamped poseIinM;
   poseIinM.header.stamp =
       ROSVisualizerHelper::get_time_from_seconds(timestamp_inI);
-  poseIinM.header.frame_id = "global";
+  poseIinM.header.frame_id = _node_namespace_ + "/srv_global";
   poseIinM.pose.orientation.x = state_gt(1, 0);
   poseIinM.pose.orientation.y = state_gt(2, 0);
   poseIinM.pose.orientation.z = state_gt(3, 0);
@@ -826,7 +831,7 @@ void ROS2Visualizer::publish_groundtruth() {
   // NOTE: https://github.com/ros-visualization/rviz/issues/1107
   nav_msgs::msg::Path arrIMU;
   arrIMU.header.stamp = _node->now();
-  arrIMU.header.frame_id = "global";
+  arrIMU.header.frame_id = _node_namespace_ + "/srv_global";
   for (size_t i = 0; i < poses_gt.size();
        i += std::floor((float)poses_gt.size() / 16384.0) + 1) {
     arrIMU.poses.push_back(poses_gt.at(i));
@@ -836,8 +841,8 @@ void ROS2Visualizer::publish_groundtruth() {
   // Publish our transform on TF
   geometry_msgs::msg::TransformStamped trans;
   trans.header.stamp = _node->now();
-  trans.header.frame_id = "global";
-  trans.child_frame_id = "truth";
+  trans.header.frame_id = _node_namespace_ + "/srv_global";
+  trans.child_frame_id = _node_namespace_ + "/srv_truth";
   trans.transform.rotation.x = state_gt(1, 0);
   trans.transform.rotation.y = state_gt(2, 0);
   trans.transform.rotation.z = state_gt(3, 0);
@@ -845,7 +850,7 @@ void ROS2Visualizer::publish_groundtruth() {
   trans.transform.translation.x = state_gt(5, 0);
   trans.transform.translation.y = state_gt(6, 0);
   trans.transform.translation.z = state_gt(7, 0);
-  if (publish_global2imu_tf) {
+  if (publish_imu2global_tf) {
     mTfBr->sendTransform(trans);
   }
 
